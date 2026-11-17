@@ -87,3 +87,17 @@ ul.painting-surface, li.painting-surface { position: relative; border-color: tra
   clip-path: var(--surface-mask, none);
 }
 
+.selection-box.placed::after {
+  content: ""; position: absolute; inset: -2px; color: var(--selection-color);
+  background: linear-gradient(currentColor 0 0) left top, linear-gradient(currentColor 0 0) right top,
+              linear-gradient(currentColor 0 0) left bottom, linear-gradient(currentColor 0 0) right bottom;
+  background-size: 4px 4px; background-repeat: no-repeat;
+}
+.in-transit { position: relative; z-index: 4; background: var(--paper); border-radius: 5px; box-shadow: 0 4px 14px #0004; }
+#done .in-transit label { text-decoration: none; }
+.in-transit label span {
+  background: linear-gradient(currentColor 0 0) left center / var(--strike, 0%) 1px no-repeat;
+}
+#undo-bar:not([hidden]) { display: flex; align-items: center; gap: 16px; margin: 16px 0 0; padding: 10px 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+#undo-bar span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#undo { margin-left: auto; padding: 5px; flex: none; color: var(--lime); background: transparent; border: 0; font-weight: bold; }

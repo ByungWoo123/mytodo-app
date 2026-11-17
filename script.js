@@ -2,6 +2,25 @@ const key = "mytodo.tasks";
 const input = document.querySelector("#task");
 const notice = document.querySelector("#notice");
 let tasks = [];
+const deleted = [];
+const undoBar = document.querySelector("#undo-bar");
+function showUndo() {
+  undoBar.hidden = !deleted.length;
+  undoBar.querySelector("span").textContent = deleted.length ? "‘" + deleted.at(-1).task.title + "’ 삭제됨" : "";
+}
+document.querySelector("#undo").addEventListener("click", () => {
+  const origin = undoBar.getBoundingClientRect();
+  const {task, nextId} = deleted.pop();
+  const next = tasks.findIndex(item => item.id === nextId);
+  tasks.splice(next < 0 ? tasks.length : next, 0, task);
+  const list = document.querySelector(task.completed ? "#done" : "#pending");
+  if (list.closest("section").hidden) selectFilter("all");
+  save();
+  showUndo();
+  const row = list.querySelector('[data-task-id="' + CSS.escape(String(task.id)) + '"]');
+  animateChange(origin, row, "add");
+  row.querySelector("input").focus({preventScroll:true});
+});
 const filters = document.querySelectorAll("[data-filter]");
 function selectFilter(value) {
   for (const button of filters) {
@@ -43,13 +62,18 @@ function renderList(selector, completed, counter, emptyMessage) {
     checkbox.type = "checkbox";
     checkbox.checked = completed;
     checkbox.addEventListener("change", () => {
+      stopMotion();
       const origin = checkbox.getBoundingClientRect();
+      const source = row.getBoundingClientRect();
       task.completed = checkbox.checked;
       save();
       input.focus({ preventScroll: true });
       const moved = document.querySelector('[data-task-id="' + CSS.escape(String(task.id)) + '"]');
       const target = moved.getClientRects().length ? moved : list.closest("section").querySelector("h2");
-      animateChange(origin, target, "move");
+      if (target === moved && source.bottom > 0 && source.top < innerHeight &&
+          moved.getBoundingClientRect().top < innerHeight && moved.getBoundingClientRect().bottom > 0) {
+        carryTask(source, moved, task.completed);
+      } else animateChange(origin, target, "move");
     });
     const title = document.createElement("span");
     title.textContent = task.title;
@@ -61,8 +85,10 @@ function renderList(selector, completed, counter, emptyMessage) {
     removeButton.addEventListener("click", () => {
       const origin = removeButton.getBoundingClientRect();
       const index = Array.from(list.children).indexOf(row);
+      deleted.push({task, nextId: tasks[tasks.indexOf(task) + 1]?.id});
       tasks = tasks.filter(item => item.id !== task.id);
       save();
+      showUndo();
       input.focus({ preventScroll: true });
       animateChange(origin, list.children[Math.min(index, list.children.length - 1)], "remove");
     });
@@ -77,6 +103,7 @@ function render() {
 }
 
 function save() {
+  stopMotion();
   try {
     localStorage.setItem(key, JSON.stringify(tasks));
     notice.textContent = "";
@@ -183,6 +210,59 @@ const detailSelector = ".brand, #replay, #date, h1, .sheet, form > label, #task,
 const rowParts = "input, label span, button";
 const fullMask = "inset(0 100% 100% 0)";
 
+function takeNearest(pool, point) {
+  const distance = agent => Math.hypot(agent.position.x - point.x, agent.position.y - point.y);
+  const closest = pool.reduce((best, agent) => distance(agent) < distance(best) ? agent : best);
+  pool.splice(pool.indexOf(closest), 1);
+  return closest;
+}
+
+function carryTask(source, row, completed) {
+  if (motionPreference.matches) return;
+  const dest = row.getBoundingClientRect();
+  const delta = {x:source.left - dest.left, y:source.top - dest.top};
+  const pool = [...agents];
+  const grips = [0, 1].map(side => {
+    const point = {x:source.left + side * source.width, y:source.top + source.height / 2};
+    const agent = takeNearest(pool, point);
+    return {agent, from:agent.position, side};
+  });
+  const remaining = document.querySelector("#remaining");
+  const finished = document.querySelector("#finished");
+  const pendingTotal = Number(remaining.textContent);
+  const doneTotal = Number(finished.textContent);
+  remaining.textContent = pendingTotal + (completed ? 1 : -1);
+  finished.textContent = doneTotal + (completed ? -1 : 1);
+  function land() {
+    row.classList.remove("in-transit");
+    row.style.removeProperty("--strike");
+    row.style.translate = "";
+    row.style.width = "";
+    remaining.textContent = pendingTotal;
+    finished.textContent = doneTotal;
+  }
+  row.classList.add("in-transit");
+  resetTargets = land;
+  function draw(time) {
+    const progress = phase(time, 235, 850);
+    const width = source.width + (dest.width - source.width) * progress;
+    const shift = arc(delta, {x:0,y:0}, progress, 12);
+    row.style.translate = shift.x + "px " + shift.y + "px";
+    row.style.width = width + "px";
+    row.style.setProperty("--strike", (completed ? progress : 1-progress)*100 + "%");
+    if (time >= 850) land();
+    const middle = row.getBoundingClientRect().height / 2;
+    for (const {agent, from, side} of grips) {
+      const grip = {x:dest.left + shift.x + width * side, y:dest.top + shift.y + middle};
+      const point = time < 235 ? arc(from,grip,phase(time,0,235),side ? 15 : -15)
+        : arc(grip,home(agent),phase(time,930,1230),side ? -18 : 18);
+      place(agent, point);
+    }
+  }
+  draw(0);
+  run(1230, draw);
+}
+
 function build(stages, isOpening, origin) {
   stopMotion(false);
   document.documentElement.classList.remove("preparing");
@@ -204,8 +284,11 @@ function build(stages, isOpening, origin) {
 
 
   // Paint container borders and backgrounds independently of their children.
+  const available = [...agents];
   const jobs = visible.map(({el, rect}, i) => {
-    const agent = agents[i] || createAgent(colors[i % colors.length], i);
+    const aim = i === 0 && origin ? {x:origin.left + origin.width/2, y:origin.top + origin.height/2}
+      : {x:rect.left, y:rect.top};
+    const agent = available.length ? takeNearest(available, aim) : createAgent(colors[i % colors.length], i);
     if (i >= agents.length) place(agent, home(agent));
     const shell = el.matches("[data-piece], ul, li[data-task-id], .sheet.front");
     if (shell) {
@@ -225,10 +308,10 @@ function build(stages, isOpening, origin) {
     const b = { x: Math.min(innerWidth,rect.right), y: Math.min(innerHeight,rect.bottom) };
     const start = offset(a, shift, carry ? -12 : 0);
     const sweepEnd = offset(b, shift, carry ? -12 : 0);
-    const depart = delays.get(bands[i]);
+    const depart = origin && i === 0 ? 0 : delays.get(bands[i]) + (origin ? 65 : 0);
     const grab = depart + 340 + (i % 6)*8;
     const release = grab + 420 + Math.min(220,rect.width*.25);
-    const finish = release + (carry ? 230 : 100);
+    const finish = release + (carry ? 230 : 0) + 175;
     const box = document.createElement("div");
     box.className = "selection-box";
     box.style.setProperty("--selection-color", agent.color);
@@ -249,7 +332,7 @@ function build(stages, isOpening, origin) {
     box.remove();
     if (i >= agents.length) agent.icon.remove();
   });
-  const waiting = agents.slice(jobs.length).map(agent => ({agent, from:agent.position}));
+  const waiting = available.map(agent => ({agent, from:agent.position}));
   run(Math.max(...jobs.map(job => job.finish)) + 420, time => {
 
     for (const {agent, from} of waiting) {
@@ -279,11 +362,13 @@ function build(stages, isOpening, origin) {
         return;
       }
       const sweep = phase(time,grab,release);
-      const fit = phase(time,release,finish);
+      const settled = finish - 175;
+      const fit = carry ? phase(time,release,settled) : Number(time >= release);
       const tip = time < release ? arc(start,sweepEnd,sweep) : arc(sweepEnd,b,fit);
       if (carry) el.style.translate = `${shift*(1-fit)}px ${-12*(1-fit)}px`;
       el.style.setProperty(mask,`inset(0 ${100*(1-sweep)}% ${100*(1-sweep)}% 0)`);
-      drawBox(offset(start,-shift*fit,carry ? 12*fit : 0),tip,1-fit,box);
+      box.classList.toggle("placed", time >= settled);
+      drawBox(offset(start,-shift*fit,carry ? 12*fit : 0),tip,1-phase(time,settled+80,finish),box);
       place(agent,tip,0,1-.1*Math.sin(Math.PI*sweep));
     });
   });
