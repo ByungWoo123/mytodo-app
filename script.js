@@ -73,7 +73,7 @@ function renderList(selector, completed, counter, emptyMessage) {
       if (target === moved && source.bottom > 0 && source.top < innerHeight &&
           moved.getBoundingClientRect().top < innerHeight && moved.getBoundingClientRect().bottom > 0) {
         carryTask(source, moved, task.completed);
-      } else animateChange(origin, target, "move");
+      } else animateChange(origin, target, "move", task.completed && tasks.every(item => item.completed) ? celebrateCompletion : undefined);
     });
     const title = document.createElement("span");
     title.textContent = task.title;
@@ -188,13 +188,16 @@ function arc(from, to, t, bend = 0) {
   return { x: from.x + dx * t - dy * sweep, y: from.y + dy * t + dx * sweep };
 }
 function offset(point, x, y) { return { x: point.x + x, y: point.y + y }; }
-function run(duration, draw) {
+function run(duration, draw, onFinish) {
   const start = performance.now();
   function tick(now) {
     const time = Math.min(duration, now - start);
     draw(time);
     if (time < duration) frame = requestAnimationFrame(tick);
-    else stopMotion();
+    else {
+      stopMotion();
+      onFinish?.();
+    }
   }
   frame = requestAnimationFrame(tick);
 }
@@ -260,10 +263,34 @@ function carryTask(source, row, completed) {
     }
   }
   draw(0);
-  run(1230, draw);
+  run(1230, draw, completed && pendingTotal === 0 ? celebrateCompletion : undefined);
 }
 
-function build(stages, isOpening, origin) {
+function celebrateCompletion() {
+  if (motionPreference.matches) return;
+  const area = document.querySelector("#pending").getBoundingClientRect();
+  if (!area.width || area.bottom <= 0 || area.top >= innerHeight) return;
+  const center = {
+    x: area.right - Math.min(54, area.width / 4),
+    y: Math.min(innerHeight - 28, Math.max(28, area.top + area.height / 2))
+  };
+  const points = [[-31,-1],[-21,9],[-11,19],[1,5],[13,-9],[25,-23]];
+  const pool = [...agents];
+  const formation = points.map(([x,y]) => {
+    const target = offset(center,x,y);
+    const agent = takeNearest(pool,target);
+    return { agent, target, from:agent.position };
+  });
+  run(1160, time => {
+    for (const {agent,target,from} of formation) {
+      const point = time < 420 ? arc(from,target,phase(time,0,420),14)
+        : arc(target,home(agent),phase(time,750,1160),-14);
+      place(agent,point);
+    }
+  });
+}
+
+function build(stages, isOpening, origin, snapInput, onFinish) {
   stopMotion(false);
   document.documentElement.classList.remove("preparing");
   if (motionPreference.matches) return stopMotion();
@@ -302,12 +329,14 @@ function build(stages, isOpening, origin) {
     }
     const mask = shell ? "--surface-mask" : "clip-path";
     el.style.setProperty(mask, fullMask);
-    const carry = !shell && el.matches(".sheet, .brand, .filters button");
-    const shift = carry ? (i % 2 ? -18 : 18) : 0;
+    const snap = el === snapInput;
+    const carry = snap || (!shell && el.matches(".sheet, .brand, .filters button"));
+    const shift = snap ? 6 : carry ? (i % 2 ? -18 : 18) : 0;
+    const lift = carry && !snap ? -12 : 0;
     const a = { x: Math.max(0,rect.left), y: Math.max(0,rect.top) };
     const b = { x: Math.min(innerWidth,rect.right), y: Math.min(innerHeight,rect.bottom) };
-    const start = offset(a, shift, carry ? -12 : 0);
-    const sweepEnd = offset(b, shift, carry ? -12 : 0);
+    const start = offset(a, shift, lift);
+    const sweepEnd = offset(b, shift, lift);
     const depart = origin && i === 0 ? 0 : delays.get(bands[i]) + (origin ? 65 : 0);
     const grab = depart + 340 + (i % 6)*8;
     const release = grab + 420 + Math.min(220,rect.width*.25);
@@ -317,10 +346,24 @@ function build(stages, isOpening, origin) {
     box.style.setProperty("--selection-color", agent.color);
     box.hidden = true;
     layer.insertBefore(box, layer.firstChild);
-    return {el, agent, box, mask, shift, carry, start, sweepEnd, b, depart, grab, release, finish,
+    let guide;
+    if (snap) {
+      const list = el.closest("ul").getBoundingClientRect();
+      guide = document.createElement("i");
+      guide.className = "alignment-guide";
+      Object.assign(guide.style, {left:rect.left+"px", top:Math.max(0,list.top-4)+"px",
+        height:Math.min(innerHeight,list.bottom+6)-Math.max(0,list.top-4)+"px", color:agent.color});
+      guide.hidden = true;
+      layer.prepend(guide);
+    }
+    return {el, agent, box, guide, mask, shift, lift, carry, start, sweepEnd, b, depart, grab, release, finish,
       from: agent.position};
   });
-  resetTargets = () => jobs.forEach(({el, agent, box, mask}, i) => {
+  const snapJob = jobs.find(job => job.guide);
+  const snapRow = snapJob?.el.closest("li");
+  if (snapRow) snapRow.style.translate = "6px 0";
+  resetTargets = () => jobs.forEach(({el, agent, box, guide, mask}, i) => {
+    if (guide) snapRow.style.translate = "";
     el.style.removeProperty(mask);
     el.style.translate = "";
     if (el.classList.contains("painting-surface")) {
@@ -330,16 +373,23 @@ function build(stages, isOpening, origin) {
       }
     }
     box.remove();
+    guide?.remove();
     if (i >= agents.length) agent.icon.remove();
   });
   const waiting = available.map(agent => ({agent, from:agent.position}));
   run(Math.max(...jobs.map(job => job.finish)) + 420, time => {
+    const rowOffset = snapJob ? 6*(1-phase(time,snapJob.release+130,snapJob.finish-175)) : 0;
+    if (snapRow) snapRow.style.translate = rowOffset ? rowOffset + "px 0" : "";
 
     for (const {agent, from} of waiting) {
       place(agent, arc(from, home(agent), phase(time, 0, 180)));
     }
-    jobs.forEach(({el, agent, box, mask, shift, carry, start, sweepEnd, b, depart, grab, release, finish, from}, i) => {
+    jobs.forEach(({el, agent, box, guide, mask, shift, lift, carry, start, sweepEnd, b, depart, grab, release, finish, from}, i) => {
       const bend = (i % 2 ? 1 : -1)*(18 + i % 6 * 4);
+      const follow = !guide && snapRow?.contains(el) ? rowOffset : 0;
+      start = offset(start, follow, 0);
+      sweepEnd = offset(sweepEnd, follow, 0);
+      b = offset(b, follow, 0);
       if (time < depart) {
         place(agent, from);
         return;
@@ -354,6 +404,7 @@ function build(stages, isOpening, origin) {
       }
       if (time >= finish) {
         box.hidden = true;
+        if (guide) guide.hidden = true;
         el.style.removeProperty(mask);
         el.style.translate = "";
         const retreat = phase(time,finish,finish+420);
@@ -363,28 +414,32 @@ function build(stages, isOpening, origin) {
       }
       const sweep = phase(time,grab,release);
       const settled = finish - 175;
-      const fit = carry ? phase(time,release,settled) : Number(time >= release);
+      const fit = carry ? phase(time,release + (guide ? 130 : 0),settled) : Number(time >= release);
       const tip = time < release ? arc(start,sweepEnd,sweep) : arc(sweepEnd,b,fit);
-      if (carry) el.style.translate = `${shift*(1-fit)}px ${-12*(1-fit)}px`;
+      if (carry && !guide) el.style.translate = `${shift*(1-fit)}px ${lift*(1-fit)}px`;
+      if (guide) {
+        guide.hidden = false;
+        guide.style.opacity = phase(time,grab,grab+100)*(1-phase(time,settled+80,finish));
+      }
       el.style.setProperty(mask,`inset(0 ${100*(1-sweep)}% ${100*(1-sweep)}% 0)`);
       box.classList.toggle("placed", time >= settled);
-      drawBox(offset(start,-shift*fit,carry ? 12*fit : 0),tip,1-phase(time,settled+80,finish),box);
+      drawBox(offset(start,-shift*fit,-lift*fit),tip,1-phase(time,settled+80,finish),box);
       place(agent,tip,0,1-.1*Math.sin(Math.PI*sweep));
     });
-  });
+  }, onFinish);
 }
 function visibleParts(scope, selector) { return Array.from(scope.querySelectorAll(selector)); }
 function playAssembly() {
   build([visibleParts(document, [panelSelector, detailSelector, "li", "h2 span", ".sheet.front > *",
     "li input", "li label span", "li button"].join(","))], true);
 }
-function animateChange(origin, target, action) {
+function animateChange(origin, target, action, onFinish) {
   const lists = target.matches(".board") ? visibleParts(target,"section:not([hidden])") : target.matches("h2") ? [...target.children] : [target];
   const contents = action === "filter" ? visibleParts(target,"h2 > *, ul, li") : [];
   const controls = visibleParts(target,rowParts);
   const counts = action === "move" ? visibleParts(document, "h2 span, li.empty")
     : visibleParts(target.closest("section") || target, "h2 span");
-  build([lists, contents, counts, controls], false, origin);
+  build([lists, contents, counts, controls], false, origin, action === "add" ? target.querySelector("input") : null, onFinish);
 }document.querySelector("#replay").addEventListener("click", playAssembly);
 function interruptOpening() { if (opening) stopMotion(); }
 document.querySelector("main").addEventListener("pointerdown", interruptOpening, true);

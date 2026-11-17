@@ -101,3 +101,4 @@ ul.painting-surface, li.painting-surface { position: relative; border-color: tra
 #undo-bar:not([hidden]) { display: flex; align-items: center; gap: 16px; margin: 16px 0 0; padding: 10px 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
 #undo-bar span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #undo { margin-left: auto; padding: 5px; flex: none; color: var(--lime); background: transparent; border: 0; font-weight: bold; }
+.alignment-guide { position: absolute; width: 1px; background: currentColor; box-shadow: 0 0 4px currentColor; pointer-events: none; }
