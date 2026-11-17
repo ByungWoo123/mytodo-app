@@ -73,7 +73,7 @@ li button { flex: none; background: transparent; color: #e6a69d; border: 0; padd
 .cursor-layer { position: fixed; inset: 0; z-index: 20; pointer-events: none; overflow: hidden; }
 .agent { position: absolute; left: 0; top: 0; width: 15px; height: 20px; filter: drop-shadow(0 1px 2px #000c); transform-origin: 0 0; will-change: transform; }
 .agent::before { content: ""; position: absolute; inset: 0; background: var(--color); clip-path: polygon(0 0, 99% 54%, 59% 62%, 77% 90%, 58% 99%, 40% 69%, 15% 92%); }
-.selection-box { position: absolute; top: 0; left: 0; width: 1px; height: 1px; background: #188fff26; border: 1px solid #269dff; box-shadow: 0 0 9px #1587ff18; }
+.selection-box { position: absolute; top: 0; left: 0; width: 1px; height: 1px; background: color-mix(in srgb, var(--selection-color) 16%, transparent); border: 1px solid var(--selection-color); box-shadow: 0 0 9px color-mix(in srgb, var(--selection-color) 12%, transparent); }
 @media (prefers-reduced-motion: no-preference) { .preparing .shell { opacity: 0; animation: startup-fallback 0s 2s forwards; } }
 @keyframes startup-fallback { to { opacity: 1; } }
 .painting-surface { isolation: isolate; background: none; border-color: transparent; }
@@ -86,3 +86,4 @@ ul.painting-surface, li.painting-surface { position: relative; border-color: tra
   background: var(--surface-background); border-radius: inherit;
   clip-path: var(--surface-mask, none);
 }
+

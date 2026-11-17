@@ -122,26 +122,20 @@ function createAgent(color, i) {
   icon.className = "agent";
   icon.style.setProperty("--color", color);
   layer.append(icon);
-  const angle = (i % colors.length) * 2 * Math.PI / colors.length;
-  return { angle, icon, position: { x: 0, y: 0 } };
+  const cell = i % colors.length;
+  const rest = {
+    x: (cell % 3 + 0.1 + Math.random() * 0.8) / 3,
+    y: (Math.floor(cell / 3) + 0.1 + Math.random() * 0.8) / 2
+  };
+  return { color, rest, icon, position: { x: 0, y: 0 } };
 }
 const agents = colors.map(createAgent);
 let frame = 0;
 let opening = false;
 let resetTargets = () => {};
 
-function home(agent, now = performance.now()) {
-  const radius = innerWidth < 600 ? 22 : 32;
-  const phase = motionPreference.matches ? 0 : now * 2 * Math.PI / 12000;
-  const angle = agent.angle + phase;
-  return {
-    x: innerWidth - radius - 32 + radius * Math.cos(angle),
-    y: innerHeight - radius - 32 + radius * Math.sin(angle)
-  };
-}
-function orbit(now) {
-  for (const agent of agents) place(agent, home(agent, now));
-  if (!motionPreference.matches) frame = requestAnimationFrame(orbit);
+function home(agent) {
+  return { x: agent.rest.x * (innerWidth - 20), y: agent.rest.y * (innerHeight - 24) };
 }
 function place(agent, point, tilt = 0, scale = 1) {
   agent.position = point;
@@ -153,7 +147,7 @@ function stopMotion(park = true) {
   resetTargets();
   resetTargets = () => {};
 
-  if (park) orbit(performance.now());
+  if (park) agents.forEach(agent => place(agent, home(agent)));
 }
 function phase(time, from, to) {
   const t = Math.max(0, Math.min(1, (time - from) / (to - from)));
@@ -207,7 +201,7 @@ function build(stages, isOpening, origin) {
   const levels = [...new Set(bands)].sort((a, b) => a - b);
   const gap = Math.min(190, 1350 / Math.max(1, levels.length - 1));
   const delays = new Map(levels.map((level, index) => [level, index * gap]));
-  const started = performance.now();
+
 
   // Paint container borders and backgrounds independently of their children.
   const jobs = visible.map(({el, rect}, i) => {
@@ -237,10 +231,11 @@ function build(stages, isOpening, origin) {
     const finish = release + (carry ? 230 : 100);
     const box = document.createElement("div");
     box.className = "selection-box";
+    box.style.setProperty("--selection-color", agent.color);
     box.hidden = true;
     layer.insertBefore(box, layer.firstChild);
     return {el, agent, box, mask, shift, carry, start, sweepEnd, b, depart, grab, release, finish,
-      from: depart ? home(agent, started + depart) : agent.position};
+      from: agent.position};
   });
   resetTargets = () => jobs.forEach(({el, agent, box, mask}, i) => {
     el.style.removeProperty(mask);
@@ -256,14 +251,14 @@ function build(stages, isOpening, origin) {
   });
   const waiting = agents.slice(jobs.length).map(agent => ({agent, from:agent.position}));
   run(Math.max(...jobs.map(job => job.finish)) + 420, time => {
-    const now = performance.now();
+
     for (const {agent, from} of waiting) {
-      place(agent, arc(from, home(agent, now), phase(time, 0, 180)));
+      place(agent, arc(from, home(agent), phase(time, 0, 180)));
     }
     jobs.forEach(({el, agent, box, mask, shift, carry, start, sweepEnd, b, depart, grab, release, finish, from}, i) => {
       const bend = (i % 2 ? 1 : -1)*(18 + i % 6 * 4);
       if (time < depart) {
-        place(agent, home(agent, now));
+        place(agent, from);
         return;
       }
       if (time < grab) {
@@ -279,7 +274,7 @@ function build(stages, isOpening, origin) {
         el.style.removeProperty(mask);
         el.style.translate = "";
         const retreat = phase(time,finish,finish+420);
-        place(agent,arc(b,home(agent, now),retreat,bend));
+        place(agent,arc(b,home(agent),retreat,bend));
         if (i >= agents.length) agent.icon.style.opacity = 1-retreat;
         return;
       }
@@ -315,6 +310,7 @@ window.addEventListener("scroll", () => stopMotion(), {passive: true});
 motionPreference.addEventListener("change", () => stopMotion());
 stopMotion();
 playAssembly();
+
 
 
 
