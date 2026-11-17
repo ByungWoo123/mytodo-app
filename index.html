@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080a0e">
+  <title>MyToDo · 하루 할 일 기록장</title>
+  <script>document.documentElement.classList.add("preparing");</script>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="mast">
+      <strong class="brand"><i aria-hidden="true">✓</i>MyToDo</strong>
+      <button type="button" id="replay"><span aria-hidden="true">↻</span> 조립 다시 보기</button>
+    </header>
+    <main>
+      <header class="cover" data-piece="cover">
+        <time id="date"></time>
+        <h1>하루 할 일<br>기록장<span>.</span></h1>
+        <div class="art" aria-hidden="true"><div class="sheet back"></div><div class="sheet middle"></div><div class="sheet front"><b>✓</b><i></i><i></i></div></div>
+      </header>
+      <form data-piece="entry">
+        <label for="task">새 할 일</label>
+        <div class="entry"><input id="task" placeholder="무엇을 해야 하나요?" required autocomplete="off"><button class="add"><span aria-hidden="true">＋</span> 추가</button></div>
+      </form>
+      <div class="filters" role="group" aria-label="할 일 상태 필터">
+        <button type="button" data-filter="all" aria-pressed="true">전체</button>
+        <button type="button" data-filter="done" aria-pressed="false">완료</button>
+        <button type="button" data-filter="pending" aria-pressed="false">미완료</button>
+      </div>
+      <div class="board">
+        <section data-piece="pending"><h2><i aria-hidden="true"></i><strong>오늘 할 일</strong> <span id="remaining"></span></h2><ul id="pending"></ul></section>
+        <section data-piece="done"><h2><i aria-hidden="true"></i><strong>완료한 일</strong> <span id="finished"></span></h2><ul id="done"></ul></section>
+      </div>
+      <p role="status" id="notice"></p>
+    </main>
+  </div>
+</body>
+</html>
+
+
+
